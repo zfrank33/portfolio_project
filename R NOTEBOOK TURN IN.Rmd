@@ -1,0 +1,190 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code.
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*.
+
+```{r}
+setwd("C:/Users/franc/Data Engineering/Week_7/r project")
+
+# WILL CHANGE STRINGS INTO FACTORS AFTER COMBINING BOTH CSV FILES because the factors have to line up perfectly when combining
+# header = TRUE is the default for csv already but better safe than sorry
+sst.train <- read.csv(file = "train.csv", stringsAsFactors = FALSE, header = TRUE)
+
+```
+
+```{r}
+#str() on an R object, it prints a summary of the object's structure, including its type, length, and contents. It can be used with any R object, including data frames, matrices, vectors, lists
+# median(sst.train$Age, na.rm=TRUE) 28  na.rm=TRUE gives the median in the absence of missing values & the $ symbol extracts a single variable or column (age)from a data frame.
+# when splitting the files back build a TRUE or FALSE column to differentiate between the the 2 csv files ( train = T or test = F)
+sst.train$IsTrainSet <- TRUE
+sst.test$IsTrainSet <- FALSE
+```
+
+```{r}
+# find the number of columns "ncol" of each to prepare for combining
+ncol(sst.train) #13
+ncol(sst.test) #11 at first but 12 (as expected because sst.test should ONLY have the survived column missing) columns after running sst.test$IsTrainSet <- FALSE (you created that column) & refreshing data DONT FORGET MOVING FORWARD
+# next make sure column names are spelled exactly the same by clicking on the csv files in the Environment panel or in the console using names(sst.train)
+```
+
+```{r}
+#add a survived col in test filled w na to make both 13 columns for combining purposes
+sst.test$Survived <- NA
+```
+
+```{r}
+sst.full <- rbind(sst.train, sst.test) # (in SQL we call this a union) should now have 1309 obs. 418 from test n 891 frOm train 
+
+# check tail again w tail(sst.full) for errors and IsTrainSet for amount of T and F
+tail(sst.full)
+
+```
+
+```{r}
+table(sst.full$IsTrainSet)
+#FALSE  TRUE 
+#418   891
+
+#reviewing the csv file I found 2 missing values by using the sorting arrows on the embarked column which is also accomplished w table(sst.full$Embarked) below
+table(sst.full$Embarked) # shows us categories C Q S and 2 empty ones so this needs to be cleaned.   
+#    C   Q   S 
+# 2 270 123 914 
+
+```
+
+```{r}
+#build a filter querying sst.full just where the embarked column is = null and only gives back Embarked (should be just 2 and we can replace the empty spots with the mode which should be category S. rerun table(sst.full$Embarked) to double check, then run it again to make sure S is now 916 and there is no empty category
+sst.full[sst.full$Embarked=='', "Embarked"] <- 'S'
+
+table(sst.full$Embarked)
+#  C   Q   S 
+# 270 123 916
+```
+
+```{r}
+#age didn't have missing values but several ages that were floats (.31  .74 etc)
+table(is.na(sst.full$Age)) 
+# FALSE  TRUE 
+# 1046   263 
+
+```
+
+```{r}
+# (is.na(sst.full$Age)) this is the filter 
+#we can build on it to replace the na's with the median age (but to find the median age we have to use na.rm like so- median(sst.full$Age, na.rm= TRUE) because we haven't replaced the missing values yet) we can then assign it to a variable before we query column "Age"] within Data set sst.full[
+median(sst.full$Age, na.rm = TRUE) #now assign it to a variable
+
+age.median <- median(sst.full$Age, na.rm = TRUE)
+```
+
+```{r}
+sst.full[is.na(sst.full$Age),"Age"] <- age.median
+#I could've just gone with sst.full[is.na(sst.full$Age)),"Age"] <- 28 but I need to get into the habit of using the variable for scripts that does an automated processes so it automatically updated (this sentence is redundant on itself but I'm tired. fix later)
+```
+
+```{r}
+is.na(sst.full$Age)#run again to make sure there are no NA's (true) and check console or 
+table(is.na(sst.full$Age)) #which returns FALSE 1309
+```
+
+```{r}
+#fare is missing several values as well using drop down arrows
+sst.full$Fare # capitalization counts here (Fare)gives us is.na(sst.full$Fare) which Ill wrap w table
+
+table(is.na(sst.full$Fare))
+# cleaned Fare of missing values
+fare.median <- median(sst.full$Fare, na.rm = TRUE)
+
+sst.full[is.na(sst.full$Fare), "Fare"] <- fare.median
+```
+
+```{r}
+#You can arrow up to rerun scripts!! reuse table(is.na(sst.full$Fare)) to see if the one true is now missing and we now have FALSE 1309
+# no more missing values so we can build our predictive model after re-seperating TEST AND TRAIN by querying the column added earlier sst.full$IsTrainSet ==TRUE and throwing it back into sst.train and then check the tail for 891 objects
+
+# categorical casting is a process of converting a variable or a column in a data set to a categorical data type  that represents the data that can take on a finite number of distinct values or categories required by machine learning algorithms
+
+sst.full$Pclass <- as.factor(sst.full$Pclass)
+sst.full$Sex <- as.factor(sst.full$Sex)
+sst.full$Embarked <- as.factor(sst.full$Embarked)
+
+```
+
+```{r}
+# split full back to train and test
+sst.train <- sst.full[sst.full$IsTrainSet==TRUE,] 
+sst.test <- sst.full[sst.full$IsTrainSet==FALSE,]
+#use ! (flips true 2 false) instead of rewriting all and changing TRUE to FALSE   #!!!!! THAT didn't work find out why
+```
+
+```{r}
+tail(sst.test)
+Survived.equation <- "Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked"
+survived.formula <- as.formula(Survived.equation)
+install.packages("randomForest")
+library(randomForest)
+```
+
+```{r}
+# 2 straight lines on a graph? Try again
+library(tidyverse) 
+
+# Read in the data from a CSV file
+sst.test <- read.csv(file = "test.csv")
+
+# Check out the structure of the data set
+summary(sst.test)
+str(sst.test)
+names(sst.test)
+
+# Display the first 10 rows of the data frame
+head(sst.test, n = 10)
+
+# Remove rows with missing values
+sst.test.df <- filter(sst.test, Survived != "")
+
+ggplot(data = sst.test.df) +
+  aes(x = Age, fill = Survived) +
+  geom_histogram(bin = 30, colour = "#1380A1") +
+  #scale_fill_brewer(palette = "Accent") +
+  labs(title = "Survival rate on the Titanic",
+       y = "Survived",
+       subtitle = "Distribution By Age, Sex and Pclass",
+       caption = "Most that died sucumed to hyperthermia not drowning") +
+  theme_bw() + 
+    facet_grid(Sex~Pclass, scales = "free")
+#Proportion of 1st, 2nd and  3rd class women and men who survived
+mf.survived <- sst.test.df %>%
+  filter(Survived == 1)%>%
+  group_by(Pclass,Sex)%>%
+  summarise(Counts = n()
+  )
+mf.died <- sst.test.df %>%
+  filter(Survived != 1)%>%
+  group_by(Pclass,Sex)%>%
+  summarise(Counts = n()
+  )
+mf.perc.survived <- mf.survived/(mf.survived + mf.died) * 100
+select (mf.perc.survived, Counts)
+
+```
+
+```{r}
+sst.model <- randomForest(formula = survived.formula, data=sst.train, ntree= 5000, mtry = 3, nodesize = .01* nrow(sst.test))
+features.equation <- "Pclass + Sex + Age + SibSp + Parch + Fare + Embarked"
+Survived <- predict(sst.model, newdata = sst.test)
+
+PassengerId <- sst.test$PassengerId
+output.df <- as.data.frame(PassengerId)
+output.df$Survived <- Survived
+
+write.csv(output.df, file="r_project.csv",row.names = FALSE)
+```
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
